@@ -20,12 +20,12 @@ readBuf.fillmode = buffer.FILL_CONTINUOUS
 --create two writable buffers to store computed voltages
 buffer.unit(buffer.UNIT_CUSTOM1, "Vi") 
 buffer.unit(buffer.UNIT_CUSTOM2, "Vr") --unfortunately stats don't work with CUSTOM2 unit. CUSTOM1 is fine. BUG?
-v1Buf = buffer.make(BUFLEN, buffer.STYLE_WRITABLE)
-v2Buf = buffer.make(BUFLEN, buffer.STYLE_WRITABLE)
-buffer.write.format(v1Buf, buffer.UNIT_VOLT, buffer.DIGITS_8_5) -- you can't set reading buffers to 8.5 digit 
-buffer.write.format(v2Buf, buffer.UNIT_VOLT, buffer.DIGITS_8_5) -- but write buffers accept it (actually default is 8.5). YAY!!!
-v1Buf.fillmode = buffer.FILL_CONTINUOUS
-v2Buf.fillmode = buffer.FILL_CONTINUOUS
+ViBuf = buffer.make(BUFLEN, buffer.STYLE_WRITABLE)
+VrBuf = buffer.make(BUFLEN, buffer.STYLE_WRITABLE)
+buffer.write.format(ViBuf, buffer.UNIT_VOLT, buffer.DIGITS_8_5) -- you can't set reading buffers to 8.5 digit 
+buffer.write.format(VrBuf, buffer.UNIT_VOLT, buffer.DIGITS_8_5) -- but write buffers accept it (actually default is 8.5). YAY!!!
+ViBuf.fillmode = buffer.FILL_CONTINUOUS
+VrBuf.fillmode = buffer.FILL_CONTINUOUS
 
 --Set the measure function voltage ratio
 dmm.measure.func = dmm.FUNC_DCV_RATIO
@@ -71,7 +71,7 @@ v2pp = 0.0
 
 -- Set Display
 -- unfortunately I can't set the graph buffers programatically. Needs to be done manually 
-display.activebuffer = v1Buf
+display.activebuffer = ViBuf
 display.settext(display.TEXT1, "p-p noise reading..")
 display.changescreen(display.SCREEN_USER_SWIPE)
 
@@ -86,8 +86,8 @@ for x=1,BUFLEN do
 	v1 = v2 * ratio;
 	
 	--write computed values to v1 & v2 buffers
-	buffer.write.reading(v1Buf, v1)
-	buffer.write.reading(v2Buf, v2)
+	buffer.write.reading(ViBuf, v1)
+	buffer.write.reading(VrBuf, v2)
 	
 	--update min & max
 	if(v1 < minv1) then minv1 = v1 end
@@ -96,7 +96,7 @@ for x=1,BUFLEN do
 	if(v2 > maxv2) then maxv2 = v2 end
 	
 	--display voltages
-	s2 = string.format("In:%02.7fV Ref:%02.7fV", v1, v2)
+	s2 = string.format("Vi:%.9fV Vr:%.9fV", v1, v2)
 	display.settext(display.TEXT2, s2)
 
 	-- report peak-to-peak values every Nth sample
@@ -105,7 +105,7 @@ for x=1,BUFLEN do
 		v1pp = 2e6*(maxv1 - minv1)/(maxv1+minv1)
 		v2pp = 2e6*(maxv2 - minv2)/(maxv2+minv2)
 		
-		s1 = string.format("I:%.2f, R:%.2f ppm", v1pp, v2pp)
+		s1 = string.format("Vi:%.2f, Vr:%.2f ppm", v1pp, v2pp)
 		display.settext(display.TEXT1, s1)
 		ResetNoiseStats()
 	end

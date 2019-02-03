@@ -25,6 +25,12 @@ see https://github.com/cozdas/DMM6500 for full info and updates
 -- check with the continious buffer behavior and get the indices from the buffer and get rid of the fixed-len loop
 -- Play with timer based approach
 
+-- following the hold probe example I first made this exit the application which keeps the things interactive
+	-- and the display buttons operate properly but when the swipe screen is not visible the timer don't call the 
+	-- callback function, does that when the swipe screen is visible. 
+	-- making this normal script has its own handicaps, such as display buttons not calling the callbacks. There needs to be 
+	-- a way to yield to message pump or such. I'll keep trying.
+
 -- global constants
 local BUFLEN = 50000
 
@@ -38,9 +44,14 @@ local NOISE_FMT_PPM	=1 -- part per million
 local NOISE_FMT_VPP	=2 -- peak-to-peak Volts
 
 -- global setting values
-local noiseWindowSize = 100
-local noiseFormat = NOISE_FMT_PPM
-local presetNo = PRESET_ASIS
+noiseWindowSize = 100
+noiseFormat = NOISE_FMT_PPM
+presetNo = PRESET_ASIS
+
+-- global run time values
+sampleNo = 0
+
+
 
 function ValuePrefix(value, short)
 	if value>=9.9e37 then return "OVR","" end 
@@ -100,33 +111,25 @@ end
 
 -- event handlers
 function onNoiseWindowChange(val)
+	beeper.beep(0.1, 1000)
 	noiseWindowSize = val
+	nextNoiseSample = dualIn.endindex6+noiseWindowSize
 end
-
 
 function onNoiseFormatChange(val)
+	beeper.beep(0.1, 1000)
 	noiseFormat = val
-	--[[	
-	if(val==NOISE_FMT_PPM) then
-		display.settext(noiseTitleId, "Noise (ppm)")
-	else
-		display.settext(noiseTitleId, "Noise Vp-p")
-	end
-	]]
 end
-
 
 function onClearBuffers()
-	-- TODO
-end
-
-function onExit()
-	deleteMainScreen()
-	display.activebuffer = dualIn
-	exit()
+	beeper.beep(0.1, 1000)
+	dualIn.clear()
+	dualVi.clear()
+	dualVr.clear()
 end
 
 function onPresetChange(val)
+	beeper.beep(0.1, 1000)
 	--Fast
 	if (val==PRESET_FAST) then
 		--dmm.measure.offsetcompensation.enable = dmm.ON
@@ -157,14 +160,16 @@ function onPresetChange(val)
 	end
 end
 
-
+--[[
 function onCloseSettings()
+	beeper.beep(0.1, 2000)
 	display.changescreen(display.SCREEN_HOME)
     display.delete(settingsId)
-    delay() -- Needed to allow change to swipeId?
-    display.changescreen(swipeId)
+    delay() -- Needed to allow change to cozDualVoltSwipeId?
+    display.changescreen(cozDualVoltSwipeId)
     collectgarbage()
 end
+]]
 
 function openSettingsScreen()
 	settingsId = display.create(display.ROOT, display.OBJ_SCREEN, 'Dual Voltage Settings')
@@ -180,11 +185,11 @@ function openSettingsScreen()
     display.setevent(presetId, display.EVENT_PRESS, "onPresetChange(%value)")
     display.setvalue(presetId, presetNo)
 
-    local closeSettingsId = display.create(settingsId, display.OBJ_BUTTON, 350, 360,  "Back")
-    display.setevent(closeSettingsId, display.EVENT_PRESS, "onCloseSettings()")
+    --local closeSettingsId = display.create(settingsId, display.OBJ_BUTTON, 350, 360,  "Back")
+    --display.setevent(closeSettingsId, display.EVENT_PRESS, "onCloseSettings()")
 end
 
---[[
+--[[ 
 			COLOR_EDIT_HELP -> 8421504 (number)
 			COLOR_EDIT_TITLE -> 901375 (number)
 			COLOR_MEASUREMENT -> 6485851 (number)
@@ -203,36 +208,58 @@ end
 
 function createMainScreen()
 	-- Create swipe screen
-    swipeId = display.create(display.SCREEN_HOME, display.OBJ_SWIPE, 'coz Dual Voltage')
+	if not cozDualVoltSwipeId or type(cozDualVoltSwipeId)~="number" then
+    	cozDualVoltSwipeId = display.create(display.SCREEN_HOME, display.OBJ_SWIPE, 'coz Dual Voltage')
+    end
+    print("cozDualVoltSwipeId=",cozDualVoltSwipeId)
 
     -- text fields for readings
-    readingTitleId 	= display.create(swipeId, display.OBJ_TEXT, 140, 35,  "Reading", display.COLOR_VALUE_LABEL, display.FONT_LARGE)
-    noiseTitleId 	= display.create(swipeId, display.OBJ_TEXT, 400, 35,  "Noise", display.COLOR_VALUE_LABEL, display.FONT_LARGE)
+    readingTitleId 	= display.create(cozDualVoltSwipeId, display.OBJ_TEXT, 140, 35,  "Reading", display.COLOR_VALUE_LABEL, display.FONT_LARGE)
+    noiseTitleId 	= display.create(cozDualVoltSwipeId, display.OBJ_TEXT, 400, 35,  "Noise", display.COLOR_VALUE_LABEL, display.FONT_LARGE)
 
-    local vInNameId 	= display.create(swipeId, display.OBJ_TEXT, 12, 85,   "Input:", display.COLOR_VALUE_LABEL, display.FONT_LARGE)
-    local vSenseNameId= display.create(swipeId, display.OBJ_TEXT, 12, 135,   "Sense:", display.COLOR_VALUE_LABEL, display.FONT_LARGE)
+    vInNameId 	= display.create(cozDualVoltSwipeId, display.OBJ_TEXT, 12, 85,   "Input:", display.COLOR_VALUE_LABEL, display.FONT_LARGE)
+    vSenseNameId= display.create(cozDualVoltSwipeId, display.OBJ_TEXT, 12, 135,   "Sense:", display.COLOR_VALUE_LABEL, display.FONT_LARGE)
 
-    vInValId 	= display.create(swipeId, display.OBJ_TEXT, 140, 85,   "...", display.COLOR_MEASUREMENT, display.FONT_LARGE)
-    vSenseValId = display.create(swipeId, display.OBJ_TEXT, 140, 135,  "...", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+    vInValId 	= display.create(cozDualVoltSwipeId, display.OBJ_TEXT, 140, 85,   "...", display.COLOR_MEASUREMENT, display.FONT_LARGE)
+    vSenseValId = display.create(cozDualVoltSwipeId, display.OBJ_TEXT, 140, 135,  "...", display.COLOR_MEASUREMENT, display.FONT_LARGE)
 
-    vInNoiseId 		= display.create(swipeId, display.OBJ_TEXT, 400, 85,   "...", display.COLOR_MEASUREMENT, display.FONT_MEDIUM)
-    vSenseNoiseId 	= display.create(swipeId, display.OBJ_TEXT, 400, 135,  "...", display.COLOR_MEASUREMENT, display.FONT_MEDIUM)
+    vInNoiseId 		= display.create(cozDualVoltSwipeId, display.OBJ_TEXT, 400, 85,   "...", display.COLOR_MEASUREMENT, display.FONT_MEDIUM)
+    vSenseNoiseId 	= display.create(cozDualVoltSwipeId, display.OBJ_TEXT, 400, 135,  "...", display.COLOR_MEASUREMENT, display.FONT_MEDIUM)
 
     -- Settings button
-    local settings_button_id = display.create(swipeId, display.OBJ_BUTTON, 625, 10, "Settings")
+    settings_button_id = display.create(cozDualVoltSwipeId, display.OBJ_BUTTON, 625, 10, "Settings")
     display.setevent(settings_button_id, display.EVENT_PRESS, "openSettingsScreen()")
 
     -- Clear Buffers button
-    local clearBuffersId = display.create(swipeId, display.OBJ_BUTTON, 625, 70,  "Buf. Clear")
+    clearBuffersId = display.create(cozDualVoltSwipeId, display.OBJ_BUTTON, 625, 70,  "Buf. Clear")
     display.setevent(clearBuffersId, display.EVENT_PRESS, "onClearBuffers()")  
 
     -- Exit button
-    local exitId = display.create(swipeId, display.OBJ_BUTTON, 625, 130,  "Exit")
-    display.setevent(exitId, display.EVENT_PRESS, "onExit()")  
+    --exitId = display.create(cozDualVoltSwipeId, display.OBJ_BUTTON, 625, 130,  "Exit")
+    --display.setevent(exitId, display.EVENT_PRESS, "onExit()")  
+
+	display.changescreen(display.SCREEN_HOME) -- Go to the newly created screen
+    display.changescreen(cozDualVoltSwipeId)
 end
 
 function deleteMainScreen()
-	display.delete(swipeId)
+	display.clear(cozDualVoltSwipeId) 
+	collectgarbage()
+	display.changescreen(display.SCREEN_FUNCTIONS_SWIPE)
+	waitcomplete()
+		
+	-- BUG: this doesn't remove the swipe from the home screen and orphan screen seems to 
+	-- crash the DMM
+	--display.delete(cozDualVoltSwipeId)
+	
+	collectgarbage()
+	waitcomplete()
+end
+
+function createMenu()
+ 	menu = display.create(display.ROOT, display.OBJ_SCREEN_MENU, "Settings", "cozDualVolt")
+	display.create(menu, display.OBJ_BUTTON_MENU, 0, 0, display.SCREEN_MEAS_SETTINGS)
+	display.create(menu, display.OBJ_BUTTON_MENU, 1, 0, settingsId, "Settings")
 end
 
 function displayReadings(vIn, vRef)
@@ -250,7 +277,7 @@ end
 function displayNoise()
 	local s1=""
 	local s2=""
-	if NOISE_FMT_PPM then
+	if noiseFormat==NOISE_FMT_PPM then
 		local v1ppm = 2e6*(maxv1 - minv1)/(maxv1+minv1)
 		local v2ppm = 2e6*(maxv2 - minv2)/(maxv2+minv2)		
 		s1 = string.format("%.3f ppm", v1ppm)
@@ -280,8 +307,17 @@ function createBuffers()
 	buffer.write.format(dualVr, buffer.UNIT_VOLT, buffer.DIGITS_8_5) -- but write buffers accept it (actually default is 8.5). YAY!!!
 	dualVi.fillmode = buffer.FILL_CONTINUOUS
 	dualVr.fillmode = buffer.FILL_CONTINUOUS
+end
 
+function createTimers()
+	sampleTimerId = display.create(cozDualVoltSwipeId, display.OBJ_TIMER, 0.1, display.TIMER_FOREVER, "sample()")
+	--sampleTimerId = display.create(display.SCREEN_HOME, display.OBJ_TIMER, 0.1, display.TIMER_FOREVER, "sample()")
+	garbageTimerId = display.create(cozDualVoltSwipeId, display.OBJ_TIMER, 60, display.TIMER_FOREVER, "collectgarbage()")
+end
 
+function deleteTimers()
+	display.delete(sampleTimerId)
+	collectgarbage()
 end
 
 function setupDMM()
@@ -301,61 +337,89 @@ function ResetNoiseStats()
 end
 
 function setup()
+	print("setup begin")
 	createBuffers()
+
+	openSettingsScreen()
+	createMenu()	
 	createMainScreen()
+
 	setupDMM()
-end
+	createTimers()
 
-
-function mainLoop()
-	-- reset Noise Stats
+	--stats
 	ResetNoiseStats()
 	v1pp = 0.0
 	v2pp = 0.0	
-	
 	nextNoiseSample = noiseWindowSize
+	print("setup end")
+end
 
-	-- sample in a loop for interactive display
-	for x=1,BUFLEN do
-		--Read the value and compute individual voltages
-		dmm.measure.read(dualIn)
-		local n = dualIn.n
-		local ratio = dualIn.readings[n]
-		local v2 = dualIn.extravalues[n]
-		local v1 = v2 * ratio;
-		
-		--write computed values to v1 & v2 buffers
-		buffer.write.reading(dualVi, v1)
-		buffer.write.reading(dualVr, v2)
-		
-		--update min & max
-		if(v1 < minv1) then minv1 = v1 end
-		if(v2 < minv2) then minv2 = v2 end
-		if(v1 > maxv1) then maxv1 = v1 end
-		if(v2 > maxv2) then maxv2 = v2 end
+function onExit()
+	deleteTimers() collectgarbage() delay(0.1)
+	deleteMainScreen()  collectgarbage() delay(0.1)
+	display.activebuffer = dualIn
+	collectgarbage() 
+	print("cozDualVolt waiting complete")
+	waitcomplete()
+	print("cozDualVolt terminated")
+	exit()
+end
 
-		displayReadings(v1, v2)
-		
-		-- report peak-to-peak values every Nth sample
-		-- for some reason modulo operator % gives syntax err BUG?
-		if x>=nextNoiseSample then
-		
-			displayNoise(v1pp, v2pp)
+function sample()
 
-			ResetNoiseStats()
-			nextNoiseSample = x+noiseWindowSize		
-		end
-		delay(1) -- hoping that this will give IU a chance?
+	--TODO: replace this logic with the buffer start-end pointer.
+	sampleNo = sampleNo+1 
+
+	--Read the value and compute individual voltages
+	dmm.measure.read(dualIn)
+	local n = dualIn.endindex
+	local ratio = dualIn.readings[n]
+	local v2 = dualIn.extravalues[n]
+	local v1 = v2 * ratio;
+	
+	--write computed values to v1 & v2 buffers
+	buffer.write.reading(dualVi, v1)
+	buffer.write.reading(dualVr, v2)
+	
+	--update min & max
+	if(v1 < minv1) then minv1 = v1 end
+	if(v2 < minv2) then minv2 = v2 end
+	if(v1 > maxv1) then maxv1 = v1 end
+	if(v2 > maxv2) then maxv2 = v2 end
+
+	displayReadings(v1, v2)
+	
+	-- report peak-to-peak values every Nth sample
+	-- for some reason modulo operator % gives syntax err BUG?
+	if sampleNo>=nextNoiseSample then
+	
+		displayNoise(v1pp, v2pp)
+
+		ResetNoiseStats()
+		nextNoiseSample = sampleNo+noiseWindowSize		
 	end
 end
 
-setup()
-mainLoop()
+function main()
+	-- following the hold probe example I first made this exit the application which keeps the things interactive
+	-- and the display buttons operate properly but when the swipe screen is not visible the timer don't call the 
+	-- callback function, does that when the swipe screen is visible. 
+	
+	--coroutine.yield()
+	--while true do
+	--	trigger.timer[1].wait(1)
+	--end
+	--while true do
+	--	display.waitevent(0.1)
+	--	sample()
+	--end
+end
 
---swipte screen is not delted on crash. I don't know how to handle that. 
---Maybe dmm handles it for apps but not for scripts
-deleteMainScreen() 
-exit()
+
+
+setup()
+main()
 
 --endscript
 -- cozDualVolt.save()
